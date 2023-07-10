@@ -259,7 +259,7 @@ func (h *Helm) renderRelease(ctx context.Context, hr helmv1.HelmRelease, values 
 // a single combined post renderer.
 func (h *Helm) postRenderers(hr helmv1.HelmRelease) (postrender.PostRenderer, error) {
 	var combinedRenderer = postrenderer.NewCombinedPostRenderer()
-	combinedRenderer.AddRenderer(postrenderer.NewPostRendererNamespace(&hr))
+	//combinedRenderer.AddRenderer(postrenderer.NewPostRendererNamespace(&hr))
 
 	for _, r := range hr.Spec.PostRenderers {
 		if r.Kustomize != nil {
