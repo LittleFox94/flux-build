@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 
-	v2 "github.com/fluxcd/helm-controller/api/v2beta1"
+	v2 "github.com/fluxcd/helm-controller/api/v2"
 	"sigs.k8s.io/kustomize/api/filesys"
 	kustypes "sigs.k8s.io/kustomize/api/types"
 )

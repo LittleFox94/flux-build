@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/kustomize/api/resmap"
 	kustypes "sigs.k8s.io/kustomize/api/types"
 
-	v2 "github.com/fluxcd/helm-controller/api/v2beta1"
+	v2 "github.com/fluxcd/helm-controller/api/v2"
 )
 
 func NewPostRendererOriginLabels(release *v2.HelmRelease) *postRendererOriginLabels {

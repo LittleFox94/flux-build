@@ -153,6 +153,12 @@ func detectResources(fSys filesys.FileSystem, rf *resource.Factory, base string,
 			}
 			return nil
 		}
+
+		if info.Name()[0] == '.' {
+			// skip hidden files, e.g. Vim swap files (:
+			return nil
+		}
+
 		fContents, err := fSys.ReadFile(path)
 		if err != nil {
 			return err

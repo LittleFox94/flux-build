@@ -20,13 +20,12 @@ import (
 	"github.com/doodlescheduling/flux-build/internal/helm/repository"
 	soci "github.com/doodlescheduling/flux-build/internal/oci"
 	"github.com/drone/envsubst"
-	helmv1 "github.com/fluxcd/helm-controller/api/v2beta1"
+	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 	"github.com/fluxcd/pkg/oci"
 	"github.com/fluxcd/pkg/oci/auth/login"
 	"github.com/fluxcd/pkg/runtime/transform"
-	sourcev1beta1 "github.com/fluxcd/source-controller/api/v1beta1"
+	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	ociv1 "github.com/fluxcd/source-controller/api/v1beta2"
-	sourcev1beta2 "github.com/fluxcd/source-controller/api/v1beta2"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	helmaction "helm.sh/helm/v3/pkg/action"
@@ -77,9 +76,8 @@ func NewHelmBuilder(opts HelmOpts) *Helm {
 
 	if opts.Decoder == nil {
 		scheme := runtime.NewScheme()
-		_ = helmv1.AddToScheme(scheme)
-		_ = sourcev1beta2.AddToScheme(scheme)
-		_ = sourcev1beta1.AddToScheme(scheme)
+		_ = helmv2.AddToScheme(scheme)
+		_ = sourcev1.AddToScheme(scheme)
 		_ = corev1.AddToScheme(scheme)
 
 		codecFactory := serializer.NewCodecFactory(scheme)
@@ -94,9 +92,9 @@ func NewHelmBuilder(opts HelmOpts) *Helm {
 
 func (h *Helm) Build(ctx context.Context, r *resource.Resource, db map[ref]*resource.Resource) (resmap.ResMap, error) {
 	r.SetGvk(resid.Gvk{
-		Group:   helmv1.GroupVersion.Group,
-		Version: helmv1.GroupVersion.Version,
-		Kind:    helmv1.HelmReleaseKind,
+		Group:   helmv2.GroupVersion.Group,
+		Version: helmv2.GroupVersion.Version,
+		Kind:    helmv2.HelmReleaseKind,
 	})
 
 	raw, err := r.AsYAML()
@@ -114,9 +112,9 @@ func (h *Helm) Build(ctx context.Context, r *resource.Resource, db map[ref]*reso
 		return nil, fmt.Errorf("failed decode resource to helmrelease: %w", err)
 	}
 
-	hr, ok := obj.(*helmv1.HelmRelease)
+	hr, ok := obj.(*helmv2.HelmRelease)
 	if !ok {
-		return nil, fmt.Errorf("expected type %T", helmv1.HelmRelease{})
+		return nil, fmt.Errorf("expected type %T", helmv2.HelmRelease{})
 	}
 
 	namespace := hr.Spec.Chart.Spec.SourceRef.Namespace
@@ -125,7 +123,7 @@ func (h *Helm) Build(ctx context.Context, r *resource.Resource, db map[ref]*reso
 	}
 	lookupRef := ref{
 		GroupKind: schema.GroupKind{
-			Group: sourcev1beta2.GroupVersion.Group,
+			Group: sourcev1.GroupVersion.Group,
 			Kind:  hr.Spec.Chart.Spec.SourceRef.Kind,
 		},
 		Name:      hr.Spec.Chart.Spec.SourceRef.Name,
@@ -182,9 +180,9 @@ func (h *Helm) Build(ctx context.Context, r *resource.Resource, db map[ref]*reso
 
 func (h *Helm) getRepository(repository *resource.Resource) (runtime.Object, error) {
 	repository.SetGvk(resid.Gvk{
-		Group:   sourcev1beta2.GroupVersion.Group,
-		Version: sourcev1beta2.GroupVersion.Version,
-		Kind:    sourcev1beta2.HelmRepositoryKind,
+		Group:   sourcev1.GroupVersion.Group,
+		Version: sourcev1.GroupVersion.Version,
+		Kind:    sourcev1.HelmRepositoryKind,
 	})
 
 	b, err := repository.AsYAML()
@@ -201,24 +199,23 @@ func (h *Helm) getRepository(repository *resource.Resource) (runtime.Object, err
 	return r, nil
 }
 
-func (h *Helm) buildChart(ctx context.Context, repository runtime.Object, release helmv1.HelmRelease, b *chart.Build, db map[ref]*resource.Resource) error {
-	chart := &sourcev1beta2.HelmChart{
-		Spec: sourcev1beta2.HelmChartSpec{
+func (h *Helm) buildChart(ctx context.Context, repository runtime.Object, release helmv2.HelmRelease, b *chart.Build, db map[ref]*resource.Resource) error {
+	chart := &sourcev1.HelmChart{
+		Spec: sourcev1.HelmChartSpec{
 			Chart:   release.Spec.Chart.Spec.Chart,
 			Version: release.Spec.Chart.Spec.Version,
-			SourceRef: sourcev1beta2.LocalHelmChartSourceReference{
+			SourceRef: sourcev1.LocalHelmChartSourceReference{
 				APIVersion: release.Spec.Chart.Spec.SourceRef.APIVersion,
 				Kind:       release.Spec.Chart.Spec.SourceRef.Kind,
 				Name:       release.Spec.Chart.Spec.SourceRef.Name,
 			},
 			ValuesFiles: release.Spec.Chart.Spec.ValuesFiles,
-			ValuesFile:  release.Spec.Chart.Spec.ValuesFile,
 			//Verify:      release.Spec.Chart.Spec.Verify,
 		},
 	}
 
 	switch repository := repository.(type) {
-	case *sourcev1beta2.HelmRepository:
+	case *sourcev1.HelmRepository:
 		return h.buildFromHelmRepository(ctx, chart, repository, b, db)
 
 	}
@@ -226,7 +223,7 @@ func (h *Helm) buildChart(ctx context.Context, repository runtime.Object, releas
 	return fmt.Errorf("unsupported chart repository `%T`", repository)
 }
 
-func (h *Helm) renderRelease(ctx context.Context, hr helmv1.HelmRelease, values chartutil.Values, b *chart.Build) (*release.Release, error) {
+func (h *Helm) renderRelease(ctx context.Context, hr helmv2.HelmRelease, values chartutil.Values, b *chart.Build) (*release.Release, error) {
 	chart, err := loader.Load(b.Path)
 	if err != nil {
 		return nil, err
@@ -244,15 +241,15 @@ func (h *Helm) renderRelease(ctx context.Context, hr helmv1.HelmRelease, values 
 	client.DryRun = true
 
 	client.IncludeCRDs = true
-	if hr.Spec.Install != nil && (hr.Spec.Install.SkipCRDs || hr.Spec.Install.CRDs == helmv1.Skip) {
+	if hr.Spec.Install != nil && (hr.Spec.Install.SkipCRDs || hr.Spec.Install.CRDs == helmv2.Skip) {
 		client.IncludeCRDs = false
 	}
 
 	client.KubeVersion = h.opts.KubeVersion
 	client.ClientOnly = true
-	client.Timeout = hr.Spec.GetInstall().GetTimeout(hr.GetTimeout()).Duration
-	client.DisableHooks = hr.Spec.GetInstall().DisableHooks
-	client.DisableOpenAPIValidation = hr.Spec.GetInstall().DisableOpenAPIValidation
+	client.Timeout = hr.GetInstall().GetTimeout(hr.GetTimeout()).Duration
+	client.DisableHooks = hr.GetInstall().DisableHooks
+	client.DisableOpenAPIValidation = hr.GetInstall().DisableOpenAPIValidation
 	client.Devel = true
 	client.EnableDNS = true
 
@@ -267,12 +264,12 @@ func (h *Helm) renderRelease(ctx context.Context, hr helmv1.HelmRelease, values 
 	client.PostRenderer = renderer
 
 	// If user opted-in to install (or replace) CRDs, install them first.
-	var legacyCRDsPolicy = helmv1.Create
-	if hr.Spec.GetInstall().SkipCRDs {
-		legacyCRDsPolicy = helmv1.Skip
+	var legacyCRDsPolicy = helmv2.Create
+	if hr.GetInstall().SkipCRDs {
+		legacyCRDsPolicy = helmv2.Skip
 	}
 
-	_, err = h.validateCRDsPolicy(hr.Spec.GetInstall().CRDs, legacyCRDsPolicy)
+	_, err = h.validateCRDsPolicy(hr.GetInstall().CRDs, legacyCRDsPolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +279,7 @@ func (h *Helm) renderRelease(ctx context.Context, hr helmv1.HelmRelease, values 
 
 // Create post renderer instances from HelmRelease and combine them into
 // a single combined post renderer.
-func (h *Helm) postRenderers(hr helmv1.HelmRelease) (postrender.PostRenderer, error) {
+func (h *Helm) postRenderers(hr helmv2.HelmRelease) (postrender.PostRenderer, error) {
 	var combinedRenderer = postrenderer.NewCombinedPostRenderer()
 	combinedRenderer.AddRenderer(postrenderer.NewPostRendererNamespace(&hr))
 
@@ -299,28 +296,28 @@ func (h *Helm) postRenderers(hr helmv1.HelmRelease) (postrender.PostRenderer, er
 	return &combinedRenderer, nil
 }
 
-func (h *Helm) validateCRDsPolicy(policy helmv1.CRDsPolicy, defaultValue helmv1.CRDsPolicy) (helmv1.CRDsPolicy, error) {
+func (h *Helm) validateCRDsPolicy(policy helmv2.CRDsPolicy, defaultValue helmv2.CRDsPolicy) (helmv2.CRDsPolicy, error) {
 	switch policy {
 	case "":
 		return defaultValue, nil
-	case helmv1.Skip:
+	case helmv2.Skip:
 		break
-	case helmv1.Create:
+	case helmv2.Create:
 		break
-	case helmv1.CreateReplace:
+	case helmv2.CreateReplace:
 		break
 	default:
 		return policy, fmt.Errorf("invalid CRD policy '%s' defined in field CRDsPolicy, valid values are '%s', '%s' or '%s'",
-			policy, helmv1.Skip, helmv1.Create, helmv1.CreateReplace,
+			policy, helmv2.Skip, helmv2.Create, helmv2.CreateReplace,
 		)
 	}
 	return policy, nil
 }
 
-// composeValues attempts to resolve all v2beta1.ValuesReference resources
+// composeValues attempts to resolve all v2.ValuesReference resources
 // and merges them as defined. Referenced resources are only retrieved once
 // to ensure a single version is taken into account during the merge.
-func (h *Helm) composeValues(_ context.Context, db map[ref]*resource.Resource, hr helmv1.HelmRelease) (chartutil.Values, error) {
+func (h *Helm) composeValues(_ context.Context, db map[ref]*resource.Resource, hr helmv2.HelmRelease) (chartutil.Values, error) {
 	result := chartutil.Values{}
 
 	for _, v := range hr.Spec.ValuesFrom {
@@ -411,7 +408,7 @@ func (h *Helm) composeValues(_ context.Context, db map[ref]*resource.Resource, h
 	return transform.MergeMaps(result, hr.GetValues()), nil
 }
 
-func (h *Helm) getHelmRepositorySecret(ctx context.Context, repository *sourcev1beta2.HelmRepository, db map[ref]*resource.Resource) (*corev1.Secret, error) {
+func (h *Helm) getHelmRepositorySecret(ctx context.Context, repository *sourcev1.HelmRepository, db map[ref]*resource.Resource) (*corev1.Secret, error) {
 	if repository.Spec.SecretRef == nil {
 		return nil, nil
 	}
@@ -457,12 +454,12 @@ func (h *Helm) clientOptionsFromSecret(secret *corev1.Secret, normalizedURL stri
 }
 
 // buildFromHelmRepository attempts to pull and/or package a Helm chart with
-// the specified data from the v1beta2.HelmRepository and v1beta2.HelmChart
+// the specified data from the sourcev1.HelmRepository and sourcev1.HelmChart
 // objects.
-// In case of a failure it records v1beta2.FetchFailedCondition on the chart
+// In case of a failure it records v1.FetchFailedCondition on the chart
 // object, and returns early.
-func (h *Helm) buildFromHelmRepository(ctx context.Context, obj *sourcev1beta2.HelmChart,
-	repo *sourcev1beta2.HelmRepository, b *chart.Build, db map[ref]*resource.Resource) error {
+func (h *Helm) buildFromHelmRepository(ctx context.Context, obj *sourcev1.HelmChart,
+	repo *sourcev1.HelmRepository, b *chart.Build, db map[ref]*resource.Resource) error {
 	var (
 		tlsConfig     *tls.Config
 		authenticator authn.Authenticator
@@ -503,7 +500,7 @@ func (h *Helm) buildFromHelmRepository(ctx context.Context, obj *sourcev1beta2.H
 		if err != nil {
 			return fmt.Errorf("failed to configure Helm client with secret data: %w", err)
 		}
-	} else if repo.Spec.Provider != sourcev1beta2.GenericOCIProvider && repo.Spec.Type == sourcev1beta2.HelmRepositoryTypeOCI {
+	} else if repo.Spec.Provider != ociv1.GenericOCIProvider && repo.Spec.Type == sourcev1.HelmRepositoryTypeOCI {
 		auth, authErr := oidcAuth(ctxTimeout, repo.Spec.URL, repo.Spec.Provider)
 		if authErr != nil && !errors.Is(authErr, oci.ErrUnconfiguredProvider) {
 			return fmt.Errorf("failed to get credential from %s: %w", repo.Spec.Provider, authErr)
@@ -521,7 +518,7 @@ func (h *Helm) buildFromHelmRepository(ctx context.Context, obj *sourcev1beta2.H
 	// Initialize the chart repository
 	var chartRepo repository.Downloader
 	switch repo.Spec.Type {
-	case sourcev1beta2.HelmRepositoryTypeOCI:
+	case sourcev1.HelmRepositoryTypeOCI:
 		if !helmreg.IsOCI(normalizedURL) {
 			return fmt.Errorf("invalid OCI registry URL: %s", normalizedURL)
 		}
@@ -646,7 +643,7 @@ func (h *Helm) buildFromHelmRepository(ctx context.Context, obj *sourcev1beta2.H
 // TempPathForObj creates a temporary file path in the format of
 // '<dir>/Kind-Namespace-Name-<random bytes><suffix>'.
 // If the given dir is empty, os.TempDir is used as a default.
-func TempPathForObj(dir, suffix string, obj *sourcev1beta2.HelmChart) string {
+func TempPathForObj(dir, suffix string, obj *sourcev1.HelmChart) string {
 	if dir == "" {
 		dir = os.TempDir()
 	}
@@ -655,7 +652,7 @@ func TempPathForObj(dir, suffix string, obj *sourcev1beta2.HelmChart) string {
 	return filepath.Join(dir, pattern(obj)+hex.EncodeToString(randBytes)+suffix)
 }
 
-func pattern(obj *sourcev1beta2.HelmChart) (p string) {
+func pattern(obj *sourcev1.HelmChart) (p string) {
 	kind := strings.ToLower(obj.GetObjectKind().GroupVersionKind().Kind)
 	return fmt.Sprintf("%s-%s-%s-", kind, obj.GetNamespace(), obj.GetName())
 }
@@ -696,7 +693,7 @@ func makeLoginOption(auth authn.Authenticator, keychain authn.Keychain, registry
 }
 
 // makeVerifiers returns a list of verifiers for the given chart.
-/*func (h *Helm) makeVerifiers(ctx context.Context, obj *sourcev1beta2.HelmChart, auth authn.Authenticator, keychain authn.Keychain) ([]soci.Verifier, error) {
+/*func (h *Helm) makeVerifiers(ctx context.Context, obj *sourcev1.HelmChart, auth authn.Authenticator, keychain authn.Keychain) ([]soci.Verifier, error) {
 	var verifiers []soci.Verifier
 	verifyOpts := []remote.Option{}
 	if auth != nil {

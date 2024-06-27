@@ -28,7 +28,7 @@ import (
 
 	"github.com/fluxcd/pkg/apis/kustomize"
 
-	v2 "github.com/fluxcd/helm-controller/api/v2beta1"
+	v2 "github.com/fluxcd/helm-controller/api/v2"
 )
 
 type postRendererKustomize struct {
@@ -118,23 +118,6 @@ func (k *postRendererKustomize) Run(renderedManifests *bytes.Buffer) (modifiedMa
 		cfg.Patches = append(cfg.Patches, kustypes.Patch{
 			Patch:  m.Patch,
 			Target: adaptSelector(m.Target),
-		})
-	}
-
-	// Add strategic merge patches.
-	for _, m := range k.spec.PatchesStrategicMerge {
-		cfg.PatchesStrategicMerge = append(cfg.PatchesStrategicMerge, kustypes.PatchStrategicMerge(m.Raw))
-	}
-
-	// Add JSON 6902 patches.
-	for _, m := range k.spec.PatchesJSON6902 {
-		patch, err := json.Marshal(m.Patch)
-		if err != nil {
-			return nil, err
-		}
-		cfg.PatchesJson6902 = append(cfg.PatchesJson6902, kustypes.Patch{
-			Patch:  string(patch),
-			Target: adaptSelector(&m.Target),
 		})
 	}
 

@@ -7,7 +7,7 @@ import (
 
 	"github.com/doodlescheduling/flux-build/internal/build"
 	"github.com/doodlescheduling/flux-build/internal/worker"
-	helmv1 "github.com/fluxcd/helm-controller/api/v2beta1"
+	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 	"github.com/go-logr/logr"
 	"helm.sh/helm/v3/pkg/chartutil"
 	"sigs.k8s.io/kustomize/api/resmap"
@@ -137,7 +137,7 @@ func (a *Action) Run(ctx context.Context) error {
 
 	for _, r := range index {
 		res := r
-		if r.GetKind() != helmv1.HelmReleaseKind {
+		if r.GetKind() != helmv2.HelmReleaseKind {
 			continue
 		}
 
